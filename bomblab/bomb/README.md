@@ -7,6 +7,7 @@ Install GDB: `sudo apt install gdb`
 
 ## Useful GDB Commands
 `x /s <addr>`: print string starting from given memory address
+
 `x/NFU <addr>`: x is used to check memory data; N is the number of units, F is format(x:hex, d:decimal), 
 U is unit size(b:1 byte, h:2 bytes, w:4 bytes, g:8 bytes).
 

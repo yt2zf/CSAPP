@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <getopt.h>
 
 struct cacheAccessSummary globalSummary;
 
@@ -219,34 +220,112 @@ cache_access_status_t *modify(cache_t *cache, unsigned long address){
     return states;
 }
 
+/*
+ * usage - Print usage info
+ */
+void usage(char *argv[]){
+    printf("Usage: %s [-hv] -s <num> -E <num> -b <num> -t <file>\n", argv[0]);
+    printf("Options:\n");
+    printf("  -h          Print this help message.\n");
+    printf("  -v          Optional verbose flag\n");
+    printf("  -s <num>    Number of set index bits.\n");
+    printf("  -E <num>    Number of lines per set.\n");       
+    printf("  -b <num>    Number of block offset bits.\n");
+    printf("  -t <file>   Trace file.\n");
+}
 
-int main() { 
+char *getAccessStatusStr(cache_access_status_t state){
+    switch (state){
+        case CACHE_HIT:
+            return "hit";
+            break;
+        case CACHE_MISS:
+            return "miss";
+            break;
+        case CACHE_MISS_EVICT:
+            return "miss eviction";
+            break;
+        case CACHE_UNDEFINED:
+        default:
+            return "";
+            break;
+    }
+}
+
+
+
+int main(int argc, char *argv[]) {
+    /* init cache summary */
     globalSummary.num_hits = 0;
     globalSummary.num_misses = 0;
     globalSummary.num_evictions = 0;
+    
+    /* parse commond-line arguments */
+    int sBits;
+    int E;
+    int bBits;
+    char *filename;
+    bool verbose = false;
 
-    cache_t *cache = initCache(2, 4, 3);
+    char cmdC;
+    char *optstring = "s:E:b:t:hv";
+    while ((cmdC = getopt(argc, argv, optstring)) != -1){
+        switch(cmdC){
+            case 's':
+                sBits = atoi(optarg);
+                break;
+            case 'E':
+                E = atoi(optarg);
+                break;
+            case 'b':
+                bBits = atoi(optarg);
+                break;
+            case 't':
+                filename = optarg;
+                break;
+            case 'h':
+                usage(argv);
+                break;
+            case 'v':
+                verbose = true;
+                break;
+            default:
+                verbose = false;
+                break;
+        }
+    }
 
+    /* simulating */
+    cache_t *cache = initCache(sBits, E, bBits);
     char cmd[3];
     unsigned long address = 0;
     int readSize = 0;
-    FILE* trace_fp = fopen("traces/trans.trace", "r");
+    FILE* trace_fp = fopen(filename, "r");
     assert(trace_fp);
+
+    cache_access_status_t accessStates[2];
     while (fscanf(trace_fp, "%s %lx,%d\n", cmd, &address, &readSize) != EOF){
-        printf("%s %lx,%d, %ld\n", cmd, address, readSize, strlen(cmd));
+        accessStates[0] = CACHE_UNDEFINED;
+        accessStates[1] = CACHE_UNDEFINED;
         switch (cmd[0]){
             case 'L':
-                load(cache, address);
+                accessStates[0] = load(cache, address);
                 break;
             case 'M':
-                modify(cache, address);
+                cache_access_status_t *tmp = modify(cache, address);
+                accessStates[0] = tmp[0];
+                accessStates[1] = tmp[1];
                 break;
             case 'S':
-                store(cache, address);
+                accessStates[0] = store(cache, address);
                 break;
         }
-
+        if (verbose){
+            printf("%s %lx,%d %s %s\n", cmd, address, readSize, getAccessStatusStr(accessStates[0]), getAccessStatusStr(accessStates[1]));
+        }
     }
+
+    // output result
     fclose(trace_fp);
     printSummary(globalSummary.num_hits, globalSummary.num_misses, globalSummary.num_evictions);
     freeCache(cache);

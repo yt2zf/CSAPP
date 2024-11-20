@@ -9,6 +9,7 @@
 #define CSIM_MAIN_H
 
 typedef int cache_access_status_t; // hit, miss, miss+evict
+#define CACHE_UNDEFINED  -1
 #define CACHE_HIT  1
 #define CACHE_MISS 2
 #define CACHE_MISS_EVICT 3

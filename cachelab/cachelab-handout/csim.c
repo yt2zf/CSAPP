@@ -2,6 +2,8 @@
 #include "csim.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
+#include <string.h>
 
 struct cacheAccessSummary globalSummary;
 
@@ -60,14 +62,14 @@ void freeCache(cache_t *cache){
     free(cache);
 }
 
-void insertLastByTag(cacheLine_queue_t *queue, unsigned long tag){
+bool insertAtTail(cacheLine_queue_t *queue, unsigned long tag){
     if (queue == NULL || queue->size >= queue->capacity){
-        return;
+        return false;
     }
     cacheline_t *newLine = malloc(sizeof(cacheline_t));
     if (newLine == NULL){
         printf("ERROR: malloc(sizeof(cacheline_t)) == NULL\n");
-        return;
+        return false;
     }
     newLine->tag = tag;
     newLine->next = NULL;
@@ -79,58 +81,68 @@ void insertLastByTag(cacheLine_queue_t *queue, unsigned long tag){
         queue->tail = newLine;
     }
     queue->size++;
+    return true;
 }
 
-void insertLast(cacheLine_queue_t *queue, cacheline_t *cacheline){
-    if (cacheline == NULL || queue == NULL || queue->size >= queue->capacity){
-        return;
+/* access 后的cache line放入队尾，表示使用时间最新; 
+return false说明队列里没有找到对应tag
+*/
+bool accessRefresh(cacheLine_queue_t *queue, unsigned long tag){
+     if (queue == NULL || queue->size == 0){
+        return false;
     }
-    cacheline->next = NULL;
-    if (queue->tail == NULL){
-        queue->head = cacheline;
-        queue->tail = cacheline;
+
+    /* 检查对应的cahceline是否本来就在队尾 */
+    if (queue->tail->tag == tag){
+        return true;
     } else{
-        queue->tail->next = cacheline;
-        queue->tail = cacheline;
+        if (queue->size == 1){
+            return false;
+        }
     }
-    queue->size++;
-}
 
-cacheline_t *popByTag(cacheLine_queue_t *queue, unsigned long tag){
-    if (queue == NULL || queue->size == 0){
-        return NULL;
-    }
+    /* pop the cacheline by given tag START*/
+    cacheline_t *hitLine = NULL;
     if (queue->head->tag == tag){
         cacheline_t *oldHead = queue->head;
         queue->head = queue->head->next;
         queue->size--;
-
         if (queue->size <= 1){
             queue->tail = queue->head;
         }
         oldHead->next = NULL;
-        return oldHead;
-    }
-
-    cacheline_t *prev = queue->head;
-    cacheline_t *cur = queue->head->next;
-    while (cur != NULL){
-        if (cur->tag == tag){
-            prev->next = cur->next;
-            cur->next = NULL;
-            queue->size--;
-            if (queue->size <= 1){
-                queue->tail = queue->head;
+        hitLine = oldHead;
+    } else{
+        cacheline_t *prev = queue->head;
+        cacheline_t *cur = queue->head->next;
+        while (cur != NULL){
+            if (cur->tag == tag){
+                prev->next = cur->next;
+                cur->next = NULL;
+                queue->size--;
+                if (queue->size <= 1){
+                    queue->tail = queue->head;
+                }
+                hitLine =  cur;
+                break;
             }
-            return cur;
+            prev = cur;
+            cur = cur->next;
         }
-        prev = cur;
-        cur = cur->next;
     }
-    return NULL;
+    /* pop the cacheline by given tag  END*/
+
+    if (hitLine != NULL){
+        // hit and insert hitLine at tail of queue;
+        queue->tail->next = hitLine; // queue->tail cant be null here, since pop only executes when size > 1
+        queue->tail = hitLine;
+        queue->size++; 
+        return true;
+    }
+    return false;
 }
 
-bool removeHead(cacheLine_queue_t *queue){
+bool removeFromHead(cacheLine_queue_t *queue){
     if (queue==NULL || queue->size == 0){
         return false;
     }
@@ -150,20 +162,18 @@ cache_access_status_t accessCache(cache_t *cache, unsigned long address){
     unsigned long tag = address >> (cache->sBits + cache->bBits);
     
     // access后的cache line放入队尾
-    cacheline_t *hitLine = popByTag(cache->sets[setIndex], tag);
-    if (hitLine != NULL){
+    if (accessRefresh(cache->sets[setIndex], tag)){
         // hit
-        insertLast(cache->sets[setIndex], hitLine);
         return CACHE_HIT;
     } else{
         // miss
         if (cache->sets[setIndex]->size == cache->sets[setIndex]->capacity){
             // miss + evict
-            removeHead(cache->sets[setIndex]);
-            insertLastByTag(cache->sets[setIndex], tag);
+            removeFromHead(cache->sets[setIndex]);
+            insertAtTail(cache->sets[setIndex], tag);
             return CACHE_MISS_EVICT;
         }
-        insertLastByTag(cache->sets[setIndex], tag);
+        insertAtTail(cache->sets[setIndex], tag);
         return CACHE_MISS;
     }
 }
@@ -215,15 +225,29 @@ int main() {
     globalSummary.num_misses = 0;
     globalSummary.num_evictions = 0;
 
-    cache_t *cache = initCache(4, 1, 4);
-    load(cache, 0x10);
-    modify(cache, 0x20);
-    load(cache, 0x22);
-    store(cache, 0x18);
-    load(cache, 0x110);
-    load(cache, 0x210);
-    modify(cache, 0x12);
+    cache_t *cache = initCache(2, 4, 3);
 
+    char cmd[3];
+    unsigned long address = 0;
+    int readSize = 0;
+    FILE* trace_fp = fopen("traces/trans.trace", "r");
+    assert(trace_fp);
+    while (fscanf(trace_fp, "%s %lx,%d\n", cmd, &address, &readSize) != EOF){
+        printf("%s %lx,%d, %ld\n", cmd, address, readSize, strlen(cmd));
+        switch (cmd[0]){
+            case 'L':
+                load(cache, address);
+                break;
+            case 'M':
+                modify(cache, address);
+                break;
+            case 'S':
+                store(cache, address);
+                break;
+        }
+
+    }
+    fclose(trace_fp);
     printSummary(globalSummary.num_hits, globalSummary.num_misses, globalSummary.num_evictions);
     freeCache(cache);
     return 0;

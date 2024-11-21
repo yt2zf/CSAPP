@@ -253,7 +253,6 @@ char *getAccessStatusStr(cache_access_status_t state){
 }
 
 
-
 int main(int argc, char *argv[]) {
     /* init cache summary */
     globalSummary.num_hits = 0;

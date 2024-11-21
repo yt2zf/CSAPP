@@ -22,6 +22,41 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
+    int i, j, tmp;
+    int blockSizeRow;
+    int blockSizeCol ;
+    int i1, j1;
+
+    if (M == 32){
+        blockSizeRow = 8;
+        blockSizeCol = 8;
+    } else if (M == 64){
+        blockSizeRow = 4;
+        blockSizeCol = 4;
+    } else{
+        blockSizeRow = 1;
+        blockSizeCol = 1;
+    }
+
+    for (i = 0; i < N; i += blockSizeRow) {
+        for (j = 0; j < M; j += blockSizeCol) {
+            // block transpose
+            for (i1 = 0; i1 < blockSizeRow; i1++){
+                for (j1 = 0; j1 < blockSizeCol; j1++){
+                    if (i1 != j1){
+                        // skip the diagonal of BLOCK first
+                        tmp = A[i + i1][j + j1];
+                        B[j + j1][i + i1] = tmp;
+                    }
+                }
+
+                // Do transpose for the diagonal of BLOCK
+                tmp = A[i + i1][j + i1];
+                B[j + i1][i + i1] = tmp;
+            }
+        }
+    }
+    
 }
 
 /* 
@@ -36,7 +71,6 @@ char trans_desc[] = "Simple row-wise scan transpose";
 void trans(int M, int N, int A[N][M], int B[M][N])
 {
     int i, j, tmp;
-
     for (i = 0; i < N; i++) {
         for (j = 0; j < M; j++) {
             tmp = A[i][j];

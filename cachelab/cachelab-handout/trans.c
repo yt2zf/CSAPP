@@ -12,6 +12,16 @@
 
 int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 
+void transpose_diagonal_block32(int blocki){
+
+}
+
+void transpose_offdiagonal_block32(int blocki, int blockj){
+}
+
+void transpose_offdiagonal_block64(int blocki, int blockj){
+
+}
 /* 
  * transpose_submit - This is the solution transpose function that you
  *     will be graded on for Part B of the assignment. Do not change
@@ -22,21 +32,60 @@ int is_transpose(int M, int N, int A[N][M], int B[M][N]);
 char transpose_submit_desc[] = "Transpose submission";
 void transpose_submit(int M, int N, int A[N][M], int B[M][N])
 {
-    int i, j, tmp;
-    int blockSizeRow;
-    int blockSizeCol ;
+    int i, j, tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
     int i1, j1;
 
     if (M == 32){
-        blockSizeRow = 8;
-        blockSizeCol = 8;
-    } else if (M == 64){
-        blockSizeRow = 64;
-        blockSizeCol = 8;
+       for (i=0; i<4; i++){
+            // transpose diagonal block
+            for (i1 = 0; i1 <8; i1++){
+                // 先按行读A，写入B的行，每行，A读miss一次，B写miss一次
+                tmp = A[i*8 + i1][i*8];
+                tmp1= A[i*8 + i1][i*8+1];
+                tmp2= A[i*8 + i1][i*8+2];
+                tmp3= A[i*8 + i1][i*8+3];
+                tmp4= A[i*8 + i1][i*8+4];
+                tmp5= A[i*8 + i1][i*8+5];
+                tmp6= A[i*8 + i1][i*8+6];
+                tmp7= A[i*8 + i1][i*8+7];
 
-        for (i = 0; i < N; i += blockSizeRow)
+                B[i*8 + i1][i*8] = tmp;
+                B[i*8 + i1][i*8+1] = tmp1;
+                B[i*8 + i1][i*8+2] = tmp2;
+                B[i*8 + i1][i*8+3] = tmp3;
+                B[i*8 + i1][i*8+4] = tmp4;
+                B[i*8 + i1][i*8+5] = tmp5;
+                B[i*8 + i1][i*8+6] = tmp6;
+                B[i*8 + i1][i*8+7] = tmp7;
+            }
+
+            // 直接对B进行转置，因为B已经在cache里了，所以对B进行读写每次都是命中
+            for (i1 = 0; i1 < 8; i1++){
+                for (j1 = i1+1; j1<8;j1++){
+                    // 对角线不用处理
+                    tmp =  B[i*8 + i1][i*8 + j1];
+                    B[i*8 + i1][i*8 + j1] = B[i*8 + j1][i*8 + i1];
+                    B[i*8 + j1][i*8 + i1] = tmp;
+                    
+                }
+            }
+            for (j=0; j<4;j++){
+                if (i != j){
+                    // transpose off-diagonal block
+                    for (i1 = 0; i1<8; i1++){
+                        for (j1=0; j1<8; j1++){
+                            tmp = A[i * 8 + i1][j*8 + j1];
+                            B[j*8 + j1][i * 8 + i1] = tmp;
+                        }
+                    }
+                }
+            }
+       }
+       return;
+    } else if (M == 64){
+        for (i = 0; i < N; i += 64)
         {
-            for (j = 0; j < M; j += blockSizeCol)
+            for (j = 0; j < M; j += 8)
             {
                 // block transpose
 
@@ -83,29 +132,14 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
         }
         return;
     } else{
-        blockSizeRow = 1;
-        blockSizeCol = 1;
     }
 
-    for (i = 0; i < N; i += blockSizeRow) {
-        for (j = 0; j < M; j += blockSizeCol) {
-            // block transpose
-            for (i1 = 0; i1 < blockSizeRow; i1++){
-                for (j1 = 0; j1 < blockSizeCol; j1++){
-                    if (i1 != j1){
-                        // skip the diagonal of BLOCK first
-                        tmp = A[i + i1][j + j1];
-                        B[j + j1][i + i1] = tmp;
-                    }
-                }
-
-                // Do transpose for the diagonal of BLOCK
-                tmp = A[i + i1][j + i1];
-                B[j + i1][i + i1] = tmp;
-            }
+    for (i = 0; i < N; i++) {
+        for (j = 0; j < M; j++) {
+            tmp = A[i][j];
+            B[j][i] = tmp;
         }
-    }
-    
+    }    
 }
 
 /* 

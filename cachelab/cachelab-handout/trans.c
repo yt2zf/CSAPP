@@ -31,8 +31,57 @@ void transpose_submit(int M, int N, int A[N][M], int B[M][N])
         blockSizeRow = 8;
         blockSizeCol = 8;
     } else if (M == 64){
-        blockSizeRow = 4;
-        blockSizeCol = 4;
+        blockSizeRow = 64;
+        blockSizeCol = 8;
+
+        for (i = 0; i < N; i += blockSizeRow)
+        {
+            for (j = 0; j < M; j += blockSizeCol)
+            {
+                // block transpose
+
+                // A的64*4
+                for (int rowA = 0; rowA < 64; rowA++)
+                {
+                    // A column的前4列，B column的前4行
+                    for (int colOffset = 0; colOffset < 4; colOffset++)
+                    {
+                        if (rowA / 8 == j / 8 && (colOffset == rowA % 4))
+                        {
+                            continue;
+                        }
+                        tmp = A[rowA][j + colOffset];
+                        B[j + colOffset][rowA] = tmp;
+                    }
+                    if (rowA / 8 == j / 8)
+                    {
+                        tmp = A[rowA][j + rowA % 4];
+                        B[j + rowA % 4][rowA] = tmp;
+                    }
+                }
+
+                // A的next 64*4
+                for (int rowA = 0; rowA < 64; rowA++)
+                {
+                    // A column的前4列，B column的前4行
+                    for (int colOffset = 0; colOffset < 4; colOffset++)
+                    {
+                        if (rowA / 8 == j / 8 && (colOffset == rowA % 4))
+                        {
+                            continue;
+                        }
+                        tmp = A[rowA][j + colOffset + 4];
+                        B[j + colOffset + 4][rowA] = tmp;
+                    }
+                    if (rowA / 8 == j / 8)
+                    {
+                        tmp = A[rowA][j + rowA % 4 + 4];
+                        B[j + rowA % 4 + 4][rowA] = tmp;
+                    }
+                }
+            }
+        }
+        return;
     } else{
         blockSizeRow = 1;
         blockSizeCol = 1;

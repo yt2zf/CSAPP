@@ -15,6 +15,7 @@
 #include <bits/sigaction.h>
 #include <asm-generic/signal-defs.h>
 #include "csapp.c"
+#include <bits/waitflags.h>
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -280,10 +281,12 @@ int builtin_cmd(char **argv)
         return 1;
     }
     if (!strcmp(argv[0], "bg")){
-
+        do_bgfg(argv);
+        return 1;
     }
     if (!strcmp(argv[0], "fg")){
-
+        do_bgfg(argv);
+        return 1;
     }
     return 0;     /* not a builtin command */
 }
@@ -293,7 +296,57 @@ int builtin_cmd(char **argv)
  */
 void do_bgfg(char **argv) 
 {   
-    return;
+   if (!strcmp(argv[0], "bg")){
+        sigset_t mask_all, prev_all;
+        Sigfillset(&mask_all);
+        Sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+        struct job_t *job;
+        if (argv[1][0] == '%'){
+            int jid = (atoi(argv[1] + 1));
+            job = getjobjid(jobs, jid);
+        } else{
+            job = getjobpid(jobs, atoi(argv[1]));
+        }
+        
+        if (job != NULL && job->state == ST){
+            Kill(-job->pid, SIGCONT);
+            while (job->state != BG){
+                Sigsuspend(&prev_all);
+            }
+            Sigprocmask(SIG_SETMASK, &prev_all, NULL);
+            printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
+        } else{
+            Sigprocmask(SIG_SETMASK, &prev_all, NULL);
+            // todo: no such job
+        }
+   } else{
+        sigset_t mask_all, prev_all;
+        Sigfillset(&mask_all);
+        Sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+
+        struct job_t *job;
+        if (argv[1][0] == '%'){
+            int jid = (atoi(argv[1] + 1));
+            job = getjobjid(jobs, jid);
+        } else{
+            job = getjobpid(jobs, atoi(argv[1]));
+        }
+        if (job != NULL && job->state != FG){
+            if (job->state == ST){
+                // continue the job first
+                Kill(-job->pid, SIGCONT);
+                while (job->state != BG){
+                    Sigsuspend(&prev_all);
+                }
+            }
+            job->state = FG;
+            waitfg(job->pid, &prev_all);
+            Sigprocmask(SIG_SETMASK, &prev_all, NULL);
+        } else{
+            Sigprocmask(SIG_SETMASK, &prev_all, NULL);
+            // todo: no such job
+        }
+   }
 }
 
 /* 
@@ -327,7 +380,7 @@ void sigchld_handler(int sig)
     int status;
 
     Sigfillset(&mask_all);
-    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0){ /* Reap all zombie children */
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED)) > 0){ /* Reap all zombie children */
         if (WIFEXITED(status)){
             Sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
             deletejob(jobs, pid);
@@ -348,6 +401,12 @@ void sigchld_handler(int sig)
             job->state = ST;
             sprintf(sbuf, "Job [%d] (%d) stopped by signal 20\n", jid, pid);
             Sio_puts(sbuf);
+            Sigprocmask(SIG_SETMASK, &prev_all, NULL); 
+        }
+        if (WIFCONTINUED(status)){
+            Sigprocmask(SIG_BLOCK, &mask_all, &prev_all);
+            struct job_t *job = getjobpid(jobs, pid);
+            job->state = BG;
             Sigprocmask(SIG_SETMASK, &prev_all, NULL); 
         } 
        

@@ -149,10 +149,13 @@ int main(int argc, char **argv)
             exit(0);
         }
 
-        /* Evaluate the command line */
-        eval(cmdline);
-        fflush(stdout);
-        fflush(stdout);
+        if (cmdline[0] != '\n'){
+            /* Evaluate the command line */
+            eval(cmdline);
+            fflush(stdout);
+            fflush(stdout);
+        }
+       
     }
 
     exit(0); /* control never reaches here */
@@ -184,7 +187,7 @@ void eval(char *cmdline)
     strcpy(buf, cmdline);
     bg = parseline(buf, argv);
     if (!builtin_cmd(argv))
-    {
+    {   
         Sigprocmask(SIG_BLOCK, &mask_one, &prev_one); /* Block SIGCHILD*/
         if ((pid = Fork()) == 0)
         {                                              /* child runs user job*/
@@ -283,14 +286,17 @@ int parseline(const char *cmdline, char **argv)
  *    it immediately.
  */
 int builtin_cmd(char **argv)
-{
+{   
+    if (argv[0] == NULL){
+        return 1;
+    }
     if (!strcmp(argv[0], "quit"))
     {
         // quit command
         exit(0);
     }
     if (!strcmp(argv[0], "&"))
-    {
+    {   
         return 1;
     }
     if (!strcmp(argv[0], "jobs"))

@@ -15,6 +15,7 @@ static char *http_port = "80";
 
 void transaction(int fdFromClient);
 int parse_url(const char *url, char *hostname, char *relative_path, char *port);
+int is_valid_hostname(const char *hostname);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
 
@@ -87,11 +88,50 @@ void transaction(int fdFromClient){
 
     // 接收host的response
     Rio_readinitb(&rio, fdToServer);
-    while (Rio_readlineb(&rio, buf, MAXLINE)){
-        Rio_writen(fdFromClient, buf, strlen(buf));
+    int bytesRead;
+    while ((bytesRead = Rio_readnb(&rio, buf, MAXLINE))){
+        Rio_writen(fdFromClient, buf, bytesRead);
     }
    
     Close(fdToServer);
+}
+
+// 检查主机名是否合法
+int is_valid_hostname(const char *hostname) {
+    if (hostname == NULL || strlen(hostname) == 0 || strlen(hostname) > MAX_HOSTNAME_LEN) {
+        return 0; // 长度非法
+    }
+    const char *start = hostname;
+    const char *end = hostname + strlen(hostname);
+
+    // 分割每个部分
+    const char *segment_start = start;
+    while (segment_start < end) {
+        const char *segment_end = strchr(segment_start, '.');
+        if (!segment_end) {
+            segment_end = end; // 最后一段
+        }
+
+        // 检查每段长度
+        size_t segment_length = segment_end - segment_start;
+        if (segment_length == 0 || segment_length > 63) {
+            return 0; // 每段长度非法
+        }
+
+        // 检查每段字符是否合法
+        if (segment_start[0] == '-' || segment_start[segment_length - 1] == '-') {
+            return 0; // 不允许以 '-' 开头或结尾
+        }
+        for (const char *p = segment_start; p < segment_end; p++) {
+            if (!isalnum(*p) && *p != '-') {
+                return 0; // 非法字符
+            }
+        }
+
+        // 移动到下一段
+        segment_start = segment_end + 1;
+    }
+    return 1; // 合法主机名
 }
 
 // 从full url path中提取hostname uri和端口
@@ -165,10 +205,9 @@ int parse_url(const char *url, char *hostname, char *relative_path, char *port) 
     }
 
     // 检查主机名是否合法
-    // if (!is_valid_hostname(hostname)) {
-    //     return -1; // 主机名非法
-    // }
-
+    if (!is_valid_hostname(hostname)) {
+        return -1; // 主机名非法
+    }
     return 0; // 成功解析
 }
 

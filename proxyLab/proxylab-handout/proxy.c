@@ -1,10 +1,15 @@
 #include "csapp.h"
+#include "sembuf.h"
 
 /* Recommended max cache and object sizes */
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+
 #define MAX_HOSTNAME_LEN 255
 #define MAX_PATH_LEN 2048
+
+#define NTHREADS 8
+#define SEMBUF_SIZE 16
 
 /* You won't lose style points for including this long line in your code */
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
@@ -13,11 +18,14 @@ static const char *proxy_connection_hdr = "Proxy-Connection: close\r\n";
 static const char *http_version = "HTTP/1.0";
 static char *http_port = "80";
 
+void *transaction_thread(void *vargp);
 void transaction(int fdFromClient);
 int parse_url(const char *url, char *hostname, char *relative_path, char *port);
 int is_valid_hostname(const char *hostname);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
+
+sembuf_t sembuf; /* shard buffer of connected fd */
 
 int main(int argc, char **argv)
 {
@@ -25,6 +33,7 @@ int main(int argc, char **argv)
     char hostname[MAXLINE], port[MAXLINE];
     socklen_t clientlen;
     struct sockaddr_storage clientaddr;
+    pthread_t tid;
 
     /* Check command line args */
     if (argc != 2)
@@ -34,6 +43,11 @@ int main(int argc, char **argv)
     }
 
     listenfd = Open_listenfd(argv[1]);
+    sembuf_init(&sembuf, SEMBUF_SIZE);
+    for (int i = 0; i < NTHREADS; i++){
+        Pthread_create(&tid, NULL, transaction_thread, NULL);
+    }
+
     while (1)
     {
         clientlen = sizeof(clientaddr);
@@ -41,6 +55,14 @@ int main(int argc, char **argv)
         Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE,
                     port, MAXLINE, 0);
         printf("Accepted connection from (%s, %s)\n", hostname, port);
+        sembuf_insert(&sembuf, fdFromClient);
+    }
+}
+
+void *transaction_thread(void *vargp){
+    Pthread_detach(pthread_self());
+    while (1){
+        int fdFromClient = sembuf_remove(&sembuf);
         transaction(fdFromClient);
         Close(fdFromClient);
     }
@@ -56,7 +78,7 @@ void transaction(int fdFromClient){
     Rio_readinitb(&rio, fdFromClient);
     if (!Rio_readlineb(&rio, buf, MAXLINE))
         return;
-    printf("%s", buf);
+    // printf("%s", buf);
     sscanf(buf, "%s %s %s", method, fullURL, version);
 
     if (strcmp(method, "GET")){
@@ -84,7 +106,7 @@ void transaction(int fdFromClient){
     strcat(buf, proxy_connection_hdr);
     strcat(buf, "\r\n");
     Rio_writen(fdToServer, buf, strlen(buf));
-    printf("forward request: %s", buf);
+    // printf("forward request: %s", buf);
 
     // 接收host的response
     Rio_readinitb(&rio, fdToServer);

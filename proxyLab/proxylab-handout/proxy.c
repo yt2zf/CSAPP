@@ -43,6 +43,7 @@ int main(int argc, char **argv)
 
     listenfd = Open_listenfd(argv[1]);
     sembuf_init(&sembuf_fdFromClient, SEMBUF_SIZE);
+    LRUCache_init(&web_lru_cache);
     rwLock_init(&rwLock_global);
     for (int i = 0; i < NTHREADS; i++){
         Pthread_create(&tid, NULL, transaction_thread, NULL);

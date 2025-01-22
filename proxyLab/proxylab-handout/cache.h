@@ -38,6 +38,7 @@ typedef struct{
 void LRUCache_init(lru_cache_t *lru);
 void LRUCache_free(lru_cache_t *lru);
 void LRUCache_put(lru_cache_t *lru, char *key, char *value, int valSize);
+void LRUCache_removeHead(lru_cache_t *lru);
 cache_node_t *LRUCache_get(lru_cache_t *lru, char *key);
 
 #endif

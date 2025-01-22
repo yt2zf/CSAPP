@@ -43,14 +43,48 @@ void LRUCache_init(lru_cache_t *lru){
 }
 
 void LRUCache_free(lru_cache_t *lru){
+    cache_node_t *curNode = lru->head;
+    while (curNode != NULL){
+        cache_node_t *tmp = curNode->next;
+        Free(curNode->key);
+        Free(curNode->value);
+        Free(curNode);
+        curNode = tmp;
+    }
+}
 
+void LRUCache_removeHead(lru_cache_t *lru){
+    if (lru->head == NULL){
+        return;
+    }
+
+    if (lru->head == lru->tail){
+        lru->size = 0;
+        Free(lru->head->key);
+        Free(lru->head->value);
+        Free(lru->head);
+        lru->head = NULL;
+        lru->tail = NULL;
+        return;
+    }
+
+    cache_node_t *headNode = lru->head;
+    lru->head = headNode->next;
+    lru->head->prev = headNode->prev;
+    if (lru->head->next == NULL){
+        lru->tail = lru->head;
+    }
+    lru->size -= headNode->valSize;
+    Free(headNode->key);
+    Free(headNode->value);
+    Free(headNode);
 }
 
 void LRUCache_put(lru_cache_t *lru, char *key, char *value, int valSize){
     rwLock_Lock(&rwLock_global);
-    // while (lru->size + valSize > lru->capacity){
-    //     // 
-    // }
+    while (lru->size + valSize > lru->capacity){
+        LRUCache_removeHead(lru);
+    }
     cache_node_t *newNode = Malloc(sizeof(cache_node_t));
     newNode->key = Malloc(strlen(key) + 1);
     strncpy(newNode->key, key, strlen(key));

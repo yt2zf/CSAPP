@@ -1,3 +1,6 @@
+#ifndef __SEMBUF_H__
+#define __SEMBUF_H__
+
 #include <semaphore.h>
 
 typedef struct{
@@ -14,3 +17,5 @@ void sembuf_init(sembuf_t *sp, int n);
 void sembuf_free(sembuf_t *sp);
 void sembuf_insert(sembuf_t *sp, int item);
 int sembuf_remove(sembuf_t *sp);  
+
+#endif

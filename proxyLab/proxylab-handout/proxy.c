@@ -1,9 +1,6 @@
 #include "csapp.h"
 #include "sembuf.h"
-
-/* Recommended max cache and object sizes */
-#define MAX_CACHE_SIZE 1049000
-#define MAX_OBJECT_SIZE 102400
+#include "cache.h"
 
 #define MAX_HOSTNAME_LEN 255
 #define MAX_PATH_LEN 2048
@@ -25,7 +22,9 @@ int is_valid_hostname(const char *hostname);
 void clienterror(int fd, char *cause, char *errnum, 
 		 char *shortmsg, char *longmsg);
 
-sembuf_t sembuf; /* shard buffer of connected fd */
+sembuf_t sembuf_fdFromClient; /* shard buffer of connected fd */
+lru_cache_t web_lru_cache;    /* web cache*/
+extern rwLock_t rwLock_global;/* cache's read write lock */
 
 int main(int argc, char **argv)
 {
@@ -43,7 +42,8 @@ int main(int argc, char **argv)
     }
 
     listenfd = Open_listenfd(argv[1]);
-    sembuf_init(&sembuf, SEMBUF_SIZE);
+    sembuf_init(&sembuf_fdFromClient, SEMBUF_SIZE);
+    rwLock_init(&rwLock_global);
     for (int i = 0; i < NTHREADS; i++){
         Pthread_create(&tid, NULL, transaction_thread, NULL);
     }
@@ -55,14 +55,14 @@ int main(int argc, char **argv)
         Getnameinfo((SA *)&clientaddr, clientlen, hostname, MAXLINE,
                     port, MAXLINE, 0);
         printf("Accepted connection from (%s, %s)\n", hostname, port);
-        sembuf_insert(&sembuf, fdFromClient);
+        sembuf_insert(&sembuf_fdFromClient, fdFromClient);
     }
 }
 
 void *transaction_thread(void *vargp){
     Pthread_detach(pthread_self());
     while (1){
-        int fdFromClient = sembuf_remove(&sembuf);
+        int fdFromClient = sembuf_remove(&sembuf_fdFromClient);
         transaction(fdFromClient);
         Close(fdFromClient);
     }
@@ -84,6 +84,12 @@ void transaction(int fdFromClient){
     if (strcmp(method, "GET")){
         clienterror(fdFromClient, method, "501", "Not Implemented",
             "Proxy does not implement this method");
+        return;
+    }
+    cache_node_t *cacheObject = LRUCache_get(&web_lru_cache, fullURL);
+    if (cacheObject != NULL){
+        // cacheObject转发给client
+        Rio_writen(fdFromClient, cacheObject->value, cacheObject->valSize);
         return;
     }
 
@@ -110,9 +116,20 @@ void transaction(int fdFromClient){
 
     // 接收host的response
     Rio_readinitb(&rio, fdToServer);
+    
     int bytesRead;
+    int totalBytesRead;
+    
+    char webObjectBuf[MAX_OBJECT_SIZE];
     while ((bytesRead = Rio_readnb(&rio, buf, MAXLINE))){
         Rio_writen(fdFromClient, buf, bytesRead);
+        totalBytesRead += bytesRead;
+        if (totalBytesRead <= MAX_OBJECT_SIZE){
+            memcpy(&webObjectBuf[totalBytesRead - bytesRead], buf, bytesRead);
+        }
+    }
+    if (totalBytesRead <= MAX_OBJECT_SIZE){
+        LRUCache_put(&web_lru_cache, fullURL, webObjectBuf, totalBytesRead);
     }
    
     Close(fdToServer);
